@@ -14,7 +14,120 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      eco_tips: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          icon: string
+          id: string
+          title: string
+        }
+        Insert: {
+          category?: string
+          content: string
+          created_at?: string
+          icon?: string
+          id?: string
+          title: string
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          icon?: string
+          id?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      meals: {
+        Row: {
+          carbon_kg: number
+          created_at: string
+          date: string
+          description: string
+          id: string
+          meal_type: string
+          user_id: string
+        }
+        Insert: {
+          carbon_kg?: number
+          created_at?: string
+          date?: string
+          description: string
+          id?: string
+          meal_type?: string
+          user_id: string
+        }
+        Update: {
+          carbon_kg?: number
+          created_at?: string
+          date?: string
+          description?: string
+          id?: string
+          meal_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trips: {
+        Row: {
+          carbon_kg: number
+          created_at: string
+          date: string
+          description: string | null
+          distance_km: number
+          id: string
+          transport_type: string
+          user_id: string
+        }
+        Insert: {
+          carbon_kg?: number
+          created_at?: string
+          date?: string
+          description?: string | null
+          distance_km?: number
+          id?: string
+          transport_type?: string
+          user_id: string
+        }
+        Update: {
+          carbon_kg?: number
+          created_at?: string
+          date?: string
+          description?: string | null
+          distance_km?: number
+          id?: string
+          transport_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
