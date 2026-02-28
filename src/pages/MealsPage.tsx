@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Utensils, Trash2 } from "lucide-react";
+import { Plus, Utensils, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { FOOD_FACTORS, calcMealCarbon } from "@/lib/carbon";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -25,9 +26,10 @@ export default function MealsPage() {
   const { user } = useAuth();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [open, setOpen] = useState(false);
-  const [foodType, setFoodType] = useState("vegetarian");
+  const [selectedFoods, setSelectedFoods] = useState<string[]>([]);
   const [mealType, setMealType] = useState("lunch");
   const [description, setDescription] = useState("");
+  const [currentFood, setCurrentFood] = useState("");
 
   const fetchMeals = async () => {
     if (!user) return;
@@ -42,26 +44,44 @@ export default function MealsPage() {
 
   useEffect(() => { fetchMeals(); }, [user]);
 
+  const addFood = (food: string) => {
+    if (food && !selectedFoods.includes(food)) {
+      setSelectedFoods([...selectedFoods, food]);
+    }
+    setCurrentFood("");
+  };
+
+  const removeFood = (food: string) => {
+    setSelectedFoods(selectedFoods.filter((f) => f !== food));
+  };
+
+  const totalCarbon = selectedFoods.reduce((sum, f) => sum + calcMealCarbon(f), 0);
+
   const handleAdd = async () => {
     if (!user) return;
-    const carbon = calcMealCarbon(foodType);
-    const label = FOOD_FACTORS[foodType]?.label ?? foodType;
-    const desc = description.trim() || label;
+    if (selectedFoods.length === 0) {
+      toast.error("Selecciona al menos un alimento");
+      return;
+    }
+
+    const labels = selectedFoods.map((f) => FOOD_FACTORS[f]?.label ?? f).join(", ");
+    const desc = description.trim() || labels;
 
     const { error } = await supabase.from("meals").insert({
       user_id: user.id,
       meal_type: mealType,
       description: desc,
-      carbon_kg: carbon,
+      carbon_kg: Number(totalCarbon.toFixed(2)),
     });
 
     if (error) {
       toast.error("Error al registrar comida");
       return;
     }
-    toast.success(`${desc} registrada (${carbon} kg CO₂)`);
+    toast.success(`${desc} registrada (${totalCarbon.toFixed(2)} kg CO₂)`);
     setOpen(false);
     setDescription("");
+    setSelectedFoods([]);
     fetchMeals();
   };
 
@@ -74,6 +94,8 @@ export default function MealsPage() {
     breakfast: "Desayuno", lunch: "Almuerzo", dinner: "Cena", snack: "Snack",
   };
 
+  const availableFoods = Object.entries(FOOD_FACTORS).filter(([k]) => !selectedFoods.includes(k));
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -81,7 +103,7 @@ export default function MealsPage() {
           <h1 className="text-xl font-bold text-foreground">Comidas</h1>
           <p className="text-sm text-muted-foreground">Registra lo que comes</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setSelectedFoods([]); setCurrentFood(""); } }}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-1.5">
               <Plus className="w-4 h-4" /> Añadir
@@ -103,25 +125,55 @@ export default function MealsPage() {
                   </SelectContent>
                 </Select>
               </div>
+
               <div>
-                <Label>Tipo de alimento</Label>
-                <Select value={foodType} onValueChange={setFoodType}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(FOOD_FACTORS).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>
-                        {v.label} ({v.factor} kg CO₂)
-                      </SelectItem>
+                <Label>Alimentos (selecciona varios)</Label>
+                {selectedFoods.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2 mb-2">
+                    {selectedFoods.map((f) => (
+                      <Badge key={f} variant="secondary" className="gap-1 pr-1">
+                        {FOOD_FACTORS[f]?.label} ({FOOD_FACTORS[f]?.factor} kg)
+                        <button onClick={() => removeFood(f)} className="ml-0.5 hover:text-destructive">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                )}
+                {availableFoods.length > 0 && (
+                  <Select value={currentFood} onValueChange={addFood}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Agregar alimento..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableFoods.map(([k, v]) => (
+                        <SelectItem key={k} value={k}>
+                          {v.label} ({v.factor} kg CO₂)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
+
+              {selectedFoods.length > 0 && (
+                <div className="rounded-lg bg-muted p-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total estimado:</span>
+                    <span className="font-bold text-primary">{totalCarbon.toFixed(2)} kg CO₂</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {selectedFoods.map((f) => `${FOOD_FACTORS[f]?.label}: ${FOOD_FACTORS[f]?.factor}`).join(" + ")} = {totalCarbon.toFixed(2)}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <Label>Descripción (opcional)</Label>
-                <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej: Ensalada con pollo" />
+                <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej: Almuerzo en casa" />
               </div>
-              <Button className="w-full" onClick={handleAdd}>
-                Registrar ({calcMealCarbon(foodType)} kg CO₂)
+              <Button className="w-full" onClick={handleAdd} disabled={selectedFoods.length === 0}>
+                Registrar ({totalCarbon.toFixed(2)} kg CO₂)
               </Button>
             </div>
           </DialogContent>
