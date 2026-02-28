@@ -105,7 +105,7 @@ export default function TripsPage() {
                   <SelectContent>
                     {Object.entries(TRANSPORT_FACTORS).map(([k, v]) => (
                       <SelectItem key={k} value={k}>
-                        {v.label} ({v.factor} kg/km)
+                        {v.label} ({v.factor} kg CO₂/km)
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -152,7 +152,7 @@ export default function TripsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-primary">{Number(trip.carbon_kg).toFixed(1)} kg</span>
+                    <span className="text-sm font-semibold text-primary">{Number(trip.carbon_kg).toFixed(1)} kg CO₂</span>
                     <button onClick={() => handleDelete(trip.id)} className="text-muted-foreground hover:text-destructive transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
