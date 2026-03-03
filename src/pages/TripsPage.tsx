@@ -147,12 +147,12 @@ export default function TripsPage() {
                     <div>
                       <p className="text-sm font-medium text-foreground">{trip.description ?? `${TRANSPORT_FACTORS[trip.transport_type]?.label}`}</p>
                       <p className="text-xs text-muted-foreground">
-                        {Number(trip.distance_km).toFixed(1)} km · {format(new Date(trip.date), "dd MMM")}
+                        {Number(trip.carbon_kg).toFixed(2)} kg CO₂ · {format(new Date(trip.date), "dd MMM")}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-primary">{Number(trip.carbon_kg).toFixed(1)} kg CO₂</span>
+                    <span className="text-sm font-semibold text-primary">{Number(trip.distance_km).toFixed(1)} km</span>
                     <button onClick={() => handleDelete(trip.id)} className="text-muted-foreground hover:text-destructive transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
