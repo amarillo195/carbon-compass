@@ -10,7 +10,7 @@ import { startOfWeek, endOfWeek, format, eachDayOfInterval, addWeeks, isThisWeek
 import { es } from "date-fns/locale";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 
-const DAILY_GOAL_KG = 8;
+const DAILY_GOAL_KG = 14;
 
 function generateTip(todayMeals: number, todayTrips: number, weeklyData: { day: string; meals: number; trips: number }[]): string {
   const totalToday = todayMeals + todayTrips;
