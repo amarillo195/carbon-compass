@@ -1,42 +1,54 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Share2, Copy, Twitter, MessageCircle, Leaf, Trophy, Flame, Utensils, MapPin, Medal, Star } from "lucide-react";
+import { Share2, Copy, Twitter, MessageCircle, Trophy, Medal, Crown, ChevronUp, ChevronDown, Minus, Flame, Leaf } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { startOfWeek, endOfWeek, format, eachDayOfInterval } from "date-fns";
-import { es } from "date-fns/locale";
+import { startOfWeek, endOfWeek, format } from "date-fns";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const DAILY_GOAL_KG = 14;
+const WEEKLY_GOAL = DAILY_GOAL_KG * 7;
 
-type RankTier = { label: string; icon: typeof Trophy; color: string; bg: string; min: number; max: number };
-
-const RANK_TIERS: RankTier[] = [
-  { label: "Eco Leyenda", icon: Trophy, color: "text-yellow-500", bg: "from-yellow-500/20 to-amber-400/10", min: 0, max: 20 },
-  { label: "Guardián Verde", icon: Medal, color: "text-emerald-500", bg: "from-emerald-500/20 to-green-400/10", min: 20, max: 40 },
-  { label: "Explorador Eco", icon: Star, color: "text-sky-500", bg: "from-sky-500/20 to-blue-400/10", min: 40, max: 65 },
-  { label: "Aprendiz Verde", icon: Leaf, color: "text-lime-500", bg: "from-lime-500/20 to-green-300/10", min: 65, max: 90 },
-  { label: "Novato Carbono", icon: Flame, color: "text-orange-500", bg: "from-orange-500/20 to-red-400/10", min: 90, max: Infinity },
+// Simulated friends for leaderboard
+const FAKE_FRIENDS = [
+  { name: "Valentina R.", avatar: "VR", weeklyKg: 42.3, trend: "down" as const },
+  { name: "Carlos M.", avatar: "CM", weeklyKg: 55.8, trend: "up" as const },
+  { name: "Lucía G.", avatar: "LG", weeklyKg: 61.2, trend: "same" as const },
+  { name: "Andrés P.", avatar: "AP", weeklyKg: 72.5, trend: "up" as const },
+  { name: "Mariana S.", avatar: "MS", weeklyKg: 78.1, trend: "down" as const },
+  { name: "Diego F.", avatar: "DF", weeklyKg: 85.4, trend: "up" as const },
+  { name: "Sofía L.", avatar: "SL", weeklyKg: 91.0, trend: "same" as const },
 ];
 
-function getRank(weeklyTotal: number, daysTracked: number): RankTier {
-  const weeklyGoal = DAILY_GOAL_KG * 7;
-  const pct = weeklyGoal > 0 ? (weeklyTotal / weeklyGoal) * 100 : 0;
-  return RANK_TIERS.find((r) => pct >= r.min && pct < r.max) || RANK_TIERS[RANK_TIERS.length - 1];
+function getRankStyle(position: number) {
+  if (position === 1) return { icon: Crown, color: "text-yellow-500", bg: "bg-yellow-500/10", border: "border-yellow-500/30", badge: "🥇" };
+  if (position === 2) return { icon: Medal, color: "text-slate-400", bg: "bg-slate-400/10", border: "border-slate-400/30", badge: "🥈" };
+  if (position === 3) return { icon: Medal, color: "text-amber-600", bg: "bg-amber-600/10", border: "border-amber-600/30", badge: "🥉" };
+  return { icon: Leaf, color: "text-muted-foreground", bg: "bg-muted/50", border: "border-border", badge: `#${position}` };
 }
+
+const TrendIcon = ({ trend }: { trend: "up" | "down" | "same" }) => {
+  if (trend === "down") return <ChevronDown className="w-3.5 h-3.5 text-emerald-500" />;
+  if (trend === "up") return <ChevronUp className="w-3.5 h-3.5 text-red-400" />;
+  return <Minus className="w-3.5 h-3.5 text-muted-foreground" />;
+};
+
+type LeaderboardEntry = {
+  name: string;
+  avatar: string;
+  weeklyKg: number;
+  trend: "up" | "down" | "same";
+  isUser: boolean;
+};
 
 export default function SharePage() {
   const { user } = useAuth();
   const [weeklyTotal, setWeeklyTotal] = useState(0);
-  const [mealCount, setMealCount] = useState(0);
-  const [tripCount, setTripCount] = useState(0);
-  const [mealCarbon, setMealCarbon] = useState(0);
-  const [tripCarbon, setTripCarbon] = useState(0);
-  const [daysTracked, setDaysTracked] = useState(0);
-  const [bestDay, setBestDay] = useState<string | null>(null);
-  const [bestDayTotal, setBestDayTotal] = useState(0);
+  const [userName, setUserName] = useState("Tú");
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -46,177 +58,122 @@ export default function SharePage() {
     const we = format(weekEnd, "yyyy-MM-dd");
 
     const fetchData = async () => {
-      const [mealsRes, tripsRes] = await Promise.all([
-        supabase.from("meals").select("carbon_kg, date").eq("user_id", user.id).gte("date", ws).lte("date", we),
-        supabase.from("trips").select("carbon_kg, date").eq("user_id", user.id).gte("date", ws).lte("date", we),
+      const [mealsRes, tripsRes, profileRes] = await Promise.all([
+        supabase.from("meals").select("carbon_kg").eq("user_id", user.id).gte("date", ws).lte("date", we),
+        supabase.from("trips").select("carbon_kg").eq("user_id", user.id).gte("date", ws).lte("date", we),
+        supabase.from("profiles").select("name").eq("user_id", user.id).maybeSingle(),
       ]);
-      const meals = mealsRes.data ?? [];
-      const trips = tripsRes.data ?? [];
-      setMealCount(meals.length);
-      setTripCount(trips.length);
-      const mc = meals.reduce((s, r) => s + Number(r.carbon_kg), 0);
-      const tc = trips.reduce((s, r) => s + Number(r.carbon_kg), 0);
-      setMealCarbon(mc);
-      setTripCarbon(tc);
-      setWeeklyTotal(mc + tc);
+      const mc = (mealsRes.data ?? []).reduce((s, r) => s + Number(r.carbon_kg), 0);
+      const tc = (tripsRes.data ?? []).reduce((s, r) => s + Number(r.carbon_kg), 0);
+      const total = mc + tc;
+      setWeeklyTotal(total);
 
-      // Calculate days tracked & best day
-      const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
-      let tracked = 0;
-      let minDay = "";
-      let minTotal = Infinity;
-      days.forEach((d) => {
-        const ds = format(d, "yyyy-MM-dd");
-        const dayMeals = meals.filter((m) => m.date === ds).reduce((s, m) => s + Number(m.carbon_kg), 0);
-        const dayTrips = trips.filter((t) => t.date === ds).reduce((s, t) => s + Number(t.carbon_kg), 0);
-        const dayTotal = dayMeals + dayTrips;
-        if (dayTotal > 0) {
-          tracked++;
-          if (dayTotal < minTotal) {
-            minTotal = dayTotal;
-            minDay = ds;
-          }
-        }
-      });
-      setDaysTracked(tracked);
-      if (minDay) {
-        setBestDay(format(new Date(minDay + "T12:00:00"), "EEEE", { locale: es }));
-        setBestDayTotal(minTotal);
-      }
+      if (profileRes.data?.name) setUserName(profileRes.data.name);
+
+      // Build leaderboard: user + fake friends, sorted by lowest CO₂
+      const userEntry: LeaderboardEntry = {
+        name: profileRes.data?.name || "Tú",
+        avatar: (profileRes.data?.name || "TU").slice(0, 2).toUpperCase(),
+        weeklyKg: total,
+        trend: total < WEEKLY_GOAL * 0.6 ? "down" : total < WEEKLY_GOAL * 0.85 ? "same" : "up",
+        isUser: true,
+      };
+      const all = [...FAKE_FRIENDS.map(f => ({ ...f, isUser: false })), userEntry];
+      all.sort((a, b) => a.weeklyKg - b.weeklyKg);
+      setLeaderboard(all);
     };
     fetchData();
   }, [user]);
 
-  const rank = getRank(weeklyTotal, daysTracked);
-  const RankIcon = rank.icon;
-  const weeklyGoal = DAILY_GOAL_KG * 7;
-  const pct = weeklyGoal > 0 ? Math.min((weeklyTotal / weeklyGoal) * 100, 150) : 0;
-  const avgDaily = daysTracked > 0 ? weeklyTotal / daysTracked : 0;
+  const userPosition = leaderboard.findIndex(e => e.isUser) + 1;
+  const pct = WEEKLY_GOAL > 0 ? Math.min((weeklyTotal / WEEKLY_GOAL) * 100, 150) : 0;
 
-  const shareText = `🏆 Soy "${rank.label}" en EcoTrack!\n🌿 Mi huella esta semana: ${weeklyTotal.toFixed(1)} kg CO₂\n🍽️ ${mealCount} comidas (${mealCarbon.toFixed(1)} kg)\n🚗 ${tripCount} viajes (${tripCarbon.toFixed(1)} kg)\n📊 Promedio: ${avgDaily.toFixed(1)} kg/día\n¡Únete y mide tu impacto! 🌍`;
+  const shareText = `🏆 ¡Estoy #${userPosition} en el ranking EcoTrack!\n🌿 Mi huella: ${weeklyTotal.toFixed(1)} kg CO₂ esta semana\n📊 ${pct.toFixed(0)}% de mi meta semanal\n¡Únete y compite! 🌍`;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(shareText);
     toast.success("¡Copiado al portapapeles!");
   };
-
-  const shareTwitter = () => {
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, "_blank");
-  };
-
-  const shareWhatsApp = () => {
-    window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
-  };
+  const shareTwitter = () => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, "_blank");
+  const shareWhatsApp = () => window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Share2 className="w-5 h-5 text-primary" /> Compartir
+          <Trophy className="w-5 h-5 text-primary" /> Ranking Semanal
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">Tu ranking semanal</p>
+        <p className="text-sm text-muted-foreground mt-1">Compite con tus amigos por la menor huella</p>
       </div>
 
-      {/* Rank Card */}
-      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 200 }}>
-        <Card className={`bg-gradient-to-br ${rank.bg} border-0 shadow-lg overflow-hidden relative`}>
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-10 translate-x-10" />
-          <CardContent className="p-6 text-center space-y-3 relative">
-            <motion.div
-              initial={{ rotate: -20, scale: 0 }}
-              animate={{ rotate: 0, scale: 1 }}
-              transition={{ delay: 0.2, type: "spring" }}
-              className="w-20 h-20 rounded-full bg-background/80 backdrop-blur flex items-center justify-center mx-auto shadow-md"
-            >
-              <RankIcon className={`w-10 h-10 ${rank.color}`} />
-            </motion.div>
-            <div>
-              <p className={`text-2xl font-extrabold ${rank.color}`}>{rank.label}</p>
-              <p className="text-xs text-muted-foreground mt-1">Ranking semanal EcoTrack</p>
-            </div>
-            <div className="text-4xl font-black text-foreground">
-              {weeklyTotal.toFixed(1)} <span className="text-base font-normal text-muted-foreground">kg CO₂</span>
-            </div>
-            <div className="w-full bg-background/50 rounded-full h-2.5 overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.min(pct, 100)}%` }}
-                transition={{ delay: 0.4, duration: 0.8 }}
-                className={`h-full rounded-full ${pct <= 50 ? "bg-emerald-500" : pct <= 80 ? "bg-yellow-500" : "bg-orange-500"}`}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {pct.toFixed(0)}% de tu meta semanal ({weeklyGoal} kg)
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>
+      {/* User Position Highlight */}
+      {userPosition > 0 && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="border-primary/30 bg-primary/5">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="text-3xl font-black text-primary">#{userPosition}</div>
+                <div>
+                  <p className="font-semibold text-foreground">Tu posición</p>
+                  <p className="text-xs text-muted-foreground">{weeklyTotal.toFixed(1)} kg CO₂ · {pct.toFixed(0)}% de meta</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-xs">
+                <TrendIcon trend={leaderboard.find(e => e.isUser)?.trend || "same"} />
+                <span className="text-muted-foreground">vs semana pasada</span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Utensils className="w-4 h-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{mealCount} comidas</p>
-                <p className="text-sm font-bold text-foreground">{mealCarbon.toFixed(1)} kg</p>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.35 }}>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-sky/10 flex items-center justify-center">
-                <MapPin className="w-4 h-4 text-sky" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{tripCount} viajes</p>
-                <p className="text-sm font-bold text-foreground">{tripCarbon.toFixed(1)} kg</p>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-accent/30 flex items-center justify-center">
-                <Flame className="w-4 h-4 text-earth" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Promedio diario</p>
-                <p className="text-sm font-bold text-foreground">{avgDaily.toFixed(1)} kg</p>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.45 }}>
-          <Card>
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-leaf-light/50 flex items-center justify-center">
-                <Star className="w-4 h-4 text-leaf" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Mejor día</p>
-                <p className="text-sm font-bold text-foreground capitalize">
-                  {bestDay ? `${bestDay} (${bestDayTotal.toFixed(1)})` : "—"}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+      {/* Leaderboard */}
+      <div className="space-y-2">
+        {leaderboard.map((entry, i) => {
+          const pos = i + 1;
+          const style = getRankStyle(pos);
+          return (
+            <motion.div
+              key={entry.name}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.05 }}
+            >
+              <Card className={`${entry.isUser ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20" : style.border} ${style.bg}`}>
+                <CardContent className="p-3 flex items-center gap-3">
+                  <span className="text-lg font-bold w-8 text-center">{style.badge}</span>
+                  <Avatar className="w-9 h-9">
+                    <AvatarFallback className={`text-xs font-bold ${entry.isUser ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                      {entry.avatar}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold truncate ${entry.isUser ? "text-primary" : "text-foreground"}`}>
+                      {entry.isUser ? `${entry.name} (Tú)` : entry.name}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <TrendIcon trend={entry.trend} />
+                      <span className="text-xs text-muted-foreground">
+                        {entry.trend === "down" ? "Mejorando" : entry.trend === "up" ? "Subiendo" : "Estable"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-foreground">{entry.weeklyKg.toFixed(1)}</p>
+                    <p className="text-[10px] text-muted-foreground">kg CO₂</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Share Actions */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
         <Card>
-          <CardContent className="p-4">
-            <p className="text-sm text-foreground mb-3 bg-muted/50 rounded-lg p-3 leading-relaxed whitespace-pre-line font-mono text-xs">
-              {shareText}
-            </p>
+          <CardContent className="p-4 space-y-3">
+            <p className="text-xs text-muted-foreground">Comparte tu ranking con amigos</p>
             <div className="grid grid-cols-3 gap-2">
               <Button variant="outline" onClick={copyToClipboard} className="gap-1.5 text-xs">
                 <Copy className="w-4 h-4" /> Copiar
